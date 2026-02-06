@@ -4,71 +4,69 @@ import requests
 import datetime
 import time
 
-# --- 1. إعدادات واجهة رادار هادي ---
-st.set_page_config(page_title="رادار هادي اللحظي ⚡", layout="wide")
-st.title("🎯 رادار هادي: صيد الحيتان اللحظي (أسهم تحت 50$)")
-st.write("🚀 وضع الاختبار: الرادار يصطاد كل الصفقات الآن للتأكد من السرعة.")
+# --- 1. إعدادات الواجهة ---
+st.set_page_config(page_title="رادار هادي - البث المباشر ⚡", layout="wide")
+st.title("🎯 رادار هادي: صيد الحيتان (مباشر الآن)")
 
-# --- 2. المفاتيح الخاصة بك (Alpaca) ---
+# --- 2. مفاتيحك التي أرسلتها ---
 ALPACA_API_KEY = "CK5KQVW7ZADWQEAJRTJ7LXJPVI"
 ALPACA_SECRET_KEY = "6h9om7wsmAAQgqW2ewCWWVFAuTqxjaKmcha2cjjxSMdx"
 
-# قائمة الأسهم (أضفت لك أسهم MARA و TSLA لتحت الـ 50$ في بعض الأوقات وأسهم نمو سريعة)
-symbols = ["PLTR", "SOFI", "NIO", "F", "LCID", "CCL", "T", "AAL", "MARA", "RIVN", "SNAP"]
+# قائمة أسهم نشطة جداً الآن (للتأكد من الحركة)
+symbols = ["TSLA", "NVDA", "AAPL", "PLTR", "SOFI", "MARA", "NIO", "AMD"]
 
 if 'whale_history' not in st.session_state:
     st.session_state.whale_history = []
 
-# --- 3. وظيفة جلب البيانات اللحظية بالثانية ---
-def get_live_data():
+# --- 3. وظيفة جلب البيانات باستخدام الرابط المباشر ---
+def get_live_trades():
+    # نستخدم V2 لضمان استلام أحدث الصفقات
+    headers = {
+        "APCA-API-KEY-ID": ALPACA_API_KEY,
+        "APCA-API-SECRET-KEY": ALPACA_SECRET_KEY
+    }
+    
     for symbol in symbols:
-        # جلب آخر صفقة من البورصة مباشرة بدون تأخير 15 دقيقة
         url = f"https://data.alpaca.markets/v2/stocks/{symbol}/trades/latest"
-        headers = {
-            "APCA-API-KEY-ID": ALPACA_API_KEY,
-            "APCA-API-SECRET-KEY": ALPACA_SECRET_KEY
-        }
-        
         try:
             response = requests.get(url, headers=headers)
             if response.status_code == 200:
-                data = response.json().get('trade', {})
-                price = data.get('p', 0)  # سعر السهم الآن
-                size = data.get('s', 0)   # كمية الأسهم المباعة
-                value = price * size      # القيمة الإجمالية للطلب
+                trade = response.json().get('trade', {})
+                price = trade.get('p', 0)
+                size = trade.get('s', 0)
+                value = price * size
                 
-                # --- التعديل المطلوب: الفلتر الآن يبدأ من 1 دولار ليظهر لك كل شيء ---
-                if 0 < price <= 50 and value >= 1: 
-                    new_trade = {
+                # الفلتر: السعر تحت 50$ (لميزانيتك) والقيمة فوق 5,000$ (لتسريع الظهور)
+                if 0 < price <= 50 and value >= 5000:
+                    new_entry = {
                         "الوقت": datetime.datetime.now().strftime("%H:%M:%S"),
                         "السهم": symbol,
-                        "السعر اللحظي": f"${price:.2f}",
-                        "قيمة الصفقة": f"${value:,.0f} 🔥",
-                        "الحالة": "متاح للشراء ✅"
+                        "السعر": f"${price:.2f}",
+                        "قيمة الصفقة": f"${value:,.0f} 🐳",
+                        "ميزانية 50$": "مناسب ✅"
                     }
                     
-                    # إضافة الصفقة للجدول ومنع التكرار
-                    if not st.session_state.whale_history or st.session_state.whale_history[0]['السهم'] != symbol or st.session_state.whale_history[0]['السعر اللحظي'] != f"${price:.2f}":
-                        st.session_state.whale_history.insert(0, new_trade)
-                        st.session_state.whale_history = st.session_state.whale_history[:20] # عرض آخر 20 صفقة
+                    # إضافة الصفقة ومنع التكرار
+                    if not st.session_state.whale_history or st.session_state.whale_history[0]['قيمة الصفقة'] != new_entry['قيمة الصفقة']:
+                        st.session_state.whale_history.insert(0, new_entry)
+                        st.session_state.whale_history = st.session_state.whale_history[:15]
             
-            # سرعة المسح (0.3 ثانية بين كل سهم لتغطية القائمة بسرعة)
-            time.sleep(0.3) 
-        except Exception as e:
+            elif response.status_code == 403:
+                st.error("❌ المفاتيح غير مفعلة للبيانات اللحظية. تأكد أنك في وضع Paper Trading.")
+                return
+        except:
             continue
 
-# --- 4. العرض وتحديث الصفحة تلقائياً ---
+# --- 4. التحديث التلقائي الشامل ---
 placeholder = st.empty()
 
-# تشغيل حلقة الرصد المستمر
 while True:
-    get_live_data()
+    get_live_trades()
     with placeholder.container():
         if st.session_state.whale_history:
-            df = pd.DataFrame(st.session_state.whale_history)
-            st.table(df) # عرض الجدول المباشر
+            st.table(pd.DataFrame(st.session_state.whale_history))
         else:
-            st.info("بانتظار أول صفقة.. الرادار يمسح الأسهم الآن بالثانية...")
+            st.info(f"الرادار يراقب {symbols} الآن.. بانتظار صفقة حوت بالثانية.")
     
-    # إعادة تشغيل الواجهة لتحديث البيانات
+    time.sleep(1) # تحديث كل ثانية
     st.rerun()
