@@ -3,78 +3,87 @@ import pandas as pd
 import yfinance as yf
 import time
 
-# --- 1. إعدادات الصفحة ---
-st.set_page_config(page_title="رادار هادي - القناص 🐳", layout="wide")
+# --- 1. إعدادات الصفحة والنمط ---
+st.set_page_config(page_title="رادار هادي - صائد السيولة 🐳", layout="wide")
 
 st.markdown("""
     <style>
-    .main { background-color: #f0f2f6; }
-    .stTable { background-color: white; border-radius: 10px; }
+    .main { background-color: #f8f9fa; }
+    .stTable { background-color: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🎯 رادار هادي (تنبيه الحيتان اللحظي)")
-st.write("✅ التنبيه: +500,000$ | اللون الأخضر: صفقات حيتان | الترتيب: الأعلى سعراً")
+st.title("🎯 رادار هادي: مراقبة صفقات المؤسسات والمسابح المظلمة")
+st.write("📈 التنبيه: **CALL** (دخول سيولة شرائية) | **PUT** (تسييل بيعي) | **WAIT** (هدوء أو انتظار)")
 
-# قائمة الشركات
-symbols = ["PLTR", "SOFI", "NIO", "MARA", "TSLA", "AAPL", "NVDA", "RIVN", "AMD"]
+# الشركات المختارة
+symbols = ["PLTR", "SOFI", "NIO", "MARA", "TSLA", "AAPL", "NVDA", "RIVN", "AMD", "AMC"]
 
 if 'market_data' not in st.session_state:
     st.session_state.market_data = {}
+if 'price_history' not in st.session_state:
+    st.session_state.price_history = {}
 
 table_placeholder = st.empty()
 
-# --- 2. دالة تلوين الصفوف (معدلة لتجنب الخطأ) ---
+# --- 2. دالة التلوين الذكي ---
 def highlight_whales(row):
-    # نتحقق من وجود القيمة أولاً لتجنب KeyError
-    liquidity = row.get('السيولة الرقمية', 0)
-    if liquidity >= 500000:
+    # تلوين الصف بالأخضر العادي فقط عند رصد سيولة حوت (نصف مليون فأكثر)
+    if row['السيولة الرقمية'] >= 500000:
         return ['background-color: #2ecc71; color: white; font-weight: bold'] * len(row)
     return [''] * len(row)
 
-# --- 3. حلقة الرصد والتحديث ---
+# --- 3. محرك تحليل التدفق ---
 while True:
     for symbol in symbols:
         try:
             ticker = yf.Ticker(symbol)
             info = ticker.fast_info
-            
             price = info.last_price
-            prev_close = info.previous_close
             volume = info.last_volume
             flow_value = price * volume 
             
-            # تحديد نوع التنبيه
-            order_type = "CALL 🟢" if price >= prev_close else "PUT 🔴"
+            # --- منطق التنبيه الثلاثي ---
+            old_price = st.session_state.price_history.get(symbol, price)
             
-            # تحديث البيانات في الذاكرة
+            if flow_value >= 500000:
+                # إذا كانت السيولة ضخمة، نحدد الاتجاه
+                if price > old_price:
+                    signal = "🐳 CALL (دخول حوت)"
+                elif price < old_price:
+                    signal = "🐳 PUT (خروج حوت)"
+                else:
+                    signal = "🐳 WHALE (تمركز)"
+            else:
+                # إذا كانت السيولة عادية، نضع حالة الانتظار
+                signal = "⏳ WAIT (انتظار)"
+            
+            # تحديث السعر للتحليل القادم
+            st.session_state.price_history[symbol] = price
+            
+            # تخزين البيانات
             st.session_state.market_data[symbol] = {
                 "الشركة": symbol,
-                "السعر الآن": price,
-                "السيولة المتدفقة": f"${flow_value:,.0f}",
-                "التنبيه": f"🐳 {order_type}" if flow_value >= 500000 else "مراقبة..",
+                "السعر الآن": f"${price:.2f}",
+                "المال المتدفق": f"${flow_value:,.0f}",
+                "التنبيه": signal,
                 "السيولة الرقمية": flow_value 
             }
         except:
             continue
 
-    # --- 4. عرض الجدول بطريقة آمنة ---
+    # --- 4. العرض والترتيب ---
     with table_placeholder.container():
         if st.session_state.market_data:
-            # تحويل البيانات لجدول وترتيبها
             df = pd.DataFrame(st.session_state.market_data.values())
-            df = df.sort_values(by='السعر الآن', ascending=False)
             
-            # تحسين شكل السعر للعرض
-            df['السعر الآن'] = df['السعر الآن'].apply(lambda x: f"${x:.2f}")
+            # الترتيب حسب المال المتدفق (الأعلى أولاً) لرؤية المسابح المظلمة في القمة
+            df = df.sort_values(by='السيولة الرقمية', ascending=False)
             
-            # نطبق التلوين على كل الجدول أولاً
-            styled_df = df.style.apply(highlight_whales, axis=1)
+            # تحديد الأعمدة للعرض فقط
+            display_cols = ["الشركة", "السعر الآن", "المال المتدفق", "التنبيه"]
             
-            # هنا السر: نحدد فقط الأعمدة التي نريد عرضها للمستخدم
-            # السيولة الرقمية ستبقى في الخلفية لعملية التلوين لكن لن تظهر في الجدول
-            cols_to_show = ["الشركة", "السعر الآن", "السيولة المتدفقة", "التنبيه"]
-            
-            st.table(styled_df.set_properties(subset=["السيولة الرقمية"], **{'display': 'none'}).hide(axis="columns", subset=["السيولة الرقمية"]))
+            # عرض الجدول مع تطبيق التلوين وإخفاء عمود الحسابات الرقمية
+            st.table(df[display_cols + ["السيولة الرقمية"]].style.apply(highlight_whales, axis=1).set_properties(subset=["السيولة الرقمية"], **{'display': 'none'}))
 
     time.sleep(2)
