@@ -4,7 +4,7 @@ import yfinance as yf
 import time
 
 # --- 1. إعدادات الصفحة ---
-st.set_page_config(page_title="رادار هادي - القناص النهائي 🐳", layout="wide")
+st.set_page_config(page_title="رادار هادي النهائي 🐳", layout="wide")
 
 st.markdown("""
     <style>
@@ -13,10 +13,10 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🎯 رادار هادي للقنص (النسخة النهائية)")
-st.write("📊 الشركات الصغيرة: تنبيه عند 1M$ | الشركات الكبرى: تنبيه عند 50M$")
+st.title("🎯 رادار هادي - نظام صيد الحيتان المستقر")
+st.write("📊 التنبيه لا يتغير إلا عند دخول سيولة حقيقية (1M للشركات الصغيرة / 50M للكبرى).")
 
-# قائمة الشركات (مقسمة لفرص رخيصة وعمالقة)
+# الشركات
 symbols = ["PLTR", "SOFI", "NIO", "MARA", "TSLA", "AAPL", "NVDA", "RIVN", "AMD", "AMC"]
 
 if 'market_data' not in st.session_state:
@@ -26,19 +26,17 @@ if 'price_history' not in st.session_state:
 
 table_placeholder = st.empty()
 
-# --- 2. دالة التلوين الذكية بناءً على حجم الشركة ---
+# --- 2. دالة التلوين المستقرة ---
 def highlight_whales(row, df_original):
     symbol = row['الشركة']
     liquidity = df_original.loc[df_original['الشركة'] == symbol, 'السيولة الرقمية'].values[0]
-    
-    # تحديد سقف التلوين حسب نوع الشركة
     limit = 50000000 if symbol in ["TSLA", "NVDA", "AAPL", "AMD"] else 1000000
     
     if liquidity >= limit:
         return ['background-color: #2ecc71; color: white; font-weight: bold'] * len(row)
     return [''] * len(row)
 
-# --- 3. محرك الرصد ---
+# --- 3. محرك الرصد المطور ---
 while True:
     for symbol in symbols:
         try:
@@ -48,23 +46,29 @@ while True:
             volume = info.last_volume
             flow_value = price * volume 
             
-            # تحديد السقف (Limit)
             limit = 50000000 if symbol in ["TSLA", "NVDA", "AAPL", "AMD"] else 1000000
             
-            # اتجاه السعر
+            # جلب السعر السابق للمقارنة اللحظية
             old_price = st.session_state.price_history.get(symbol, price)
             
-            # منطق التنبيه ورصد الحيتان
+            # --- المنطق المصلح: التنبيه لا يظهر إلا إذا تجاوزت السيولة الحد ---
             if flow_value >= limit:
                 whale_detect = "حوت 🐳"
-                if price > old_price: signal = "CALL 🟢"
-                elif price < old_price: signal = "PUT 🔴"
-                else: signal = "تمركز ⚪"
+                # تحديد الاتجاه بناءً على حركة السعر وقت دخول السيولة
+                if price > old_price:
+                    signal = "CALL 🟢"
+                elif price < old_price:
+                    signal = "PUT 🔴"
+                else:
+                    signal = "تمركز ⚪"
             else:
+                # إذا كانت السيولة أقل من الحد، يبقى الجدول صامتاً (انتظار)
                 whale_detect = "—"
                 signal = "انتظار ⏳"
             
+            # تحديث السعر في الذاكرة
             st.session_state.price_history[symbol] = price
+            
             st.session_state.market_data[symbol] = {
                 "الشركة": symbol,
                 "السعر الآن": price,
@@ -75,14 +79,11 @@ while True:
         except:
             continue
 
-    # --- 4. العرض النهائي الصافي ---
     with table_placeholder.container():
         if st.session_state.market_data:
             df_full = pd.DataFrame(list(st.session_state.market_data.values()))
-            # الترتيب حسب السيولة (الأعلى دائماً في القمة)
             df_full = df_full.sort_values(by='السيولة الرقمية', ascending=False)
             
-            # عرض الأعمدة المطلوبة فقط (بدون المال المتدفق)
             cols_to_show = ["الشركة", "السعر الآن", "رصد الحيتان", "التنبيه"]
             df_display = df_full[cols_to_show].copy()
             df_display['السعر الآن'] = df_display['السعر الآن'].apply(lambda x: f"${x:.2f}")
