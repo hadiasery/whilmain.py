@@ -1,90 +1,70 @@
 import streamlit as st
-from ib_insync import *
 import pandas as pd
+import requests
 import datetime
+import time
 
-# --- إعدادات الواجهة ---
-st.set_page_config(page_title="رادار الحيتان - القناص", layout="wide")
-st.title("🐳 رادار صيد ونسخ صفقات الحيتان")
+# --- 1. إعدادات الواجهة ---
+st.set_page_config(page_title="رادار هادي لصيد الحيتان", layout="wide")
+st.title("🐳 رادار هادي: صيد صفقات الحيتان (رصد فقط)")
 
-# --- إدارة الحالة (Session State) ---
-if 'whale_trades' not in st.session_state:
-    st.session_state.whale_trades = []
+# --- 2. إدارة البيانات (في الخفاء) ---
+# سنستخدم مفتاح تجريبي للبيانات (يمكنك استبداله بمفتاحك الخاص لاحقاً)
+POLYGON_API_KEY = "YOUR_FREE_API_KEY" 
 
-# --- دالة تنفيذ الصفقة ---
-def place_whale_order(symbol, quantity):
+if 'whale_log' not in st.session_state:
+    st.session_state.whale_log = []
+
+# --- 3. وظيفة الرصد (Whale Detection Logic) ---
+def fetch_whale_trades(symbol):
+    """جلب الصفقات الضخمة من السوق الأمريكي"""
+    url = f"https://api.polygon.io/v3/trades/{symbol}?limit=10&apiKey={POLYGON_API_KEY}"
     try:
-        contract = Stock(symbol, 'SMART', 'USD')
-        ib.qualifyContracts(contract)
-        # أمر شراء بسعر السوق (Market Order) للحاق بالحوت سريعاً
-        order = MarketOrder('BUY', quantity)
-        trade = ib.placeOrder(contract, order)
-        st.success(f"🚀 تم إرسال أمر شراء {quantity} سهم في {symbol} بنجاح!")
-    except Exception as e:
-        st.error(f"❌ فشل التنفيذ: {e}")
-
-# --- الاتصال بـ IBKR ---
-@st.cache_resource
-def get_ib_connection():
-    ib_instance = IB()
-    try:
-        ib_instance.connect('127.0.0.1', 7497, clientId=15)
-        return ib_instance
-    except:
-        return None
-
-ib = get_ib_connection()
-
-if not ib:
-    st.warning("⚠️ يرجى التأكد من تشغيل TWS أو IB Gateway وتفعيل الـ API")
-else:
-    # --- القائمة الجانبية ---
-    st.sidebar.header("إعدادات الرادار")
-    whale_limit = st.sidebar.number_input("حد الصفقة (دولار)", value=100000, step=10000)
-    copy_size = st.sidebar.number_input("كمية النسخ (عدد الأسهم)", value=10, step=1)
-    
-    # --- رصد البيانات ---
-    symbols = ['TSLA', 'NVDA', 'AAPL', 'AMD', 'MSFT', 'SPY']
-    contracts = [Stock(s, 'SMART', 'USD') for s in symbols]
-    ib.qualifyContracts(*contracts)
-
-    def onTick(tickers):
-        for ticker in tickers:
-            if ticker.lastSize and ticker.last:
-                val = ticker.last * ticker.lastSize
-                if val >= whale_limit:
-                    trade_data = {
+        response = requests.get(url)
+        if response.status_code == 200:
+            trades = response.json().get('results', [])
+            for t in trades:
+                # حساب قيمة الصفقة: السعر × الكمية
+                trade_value = t['p'] * t['s']
+                
+                # إذا كانت الصفقة أكبر من حد الحوت المحدد
+                if trade_value >= whale_limit:
+                    new_entry = {
                         "الوقت": datetime.datetime.now().strftime("%H:%M:%S"),
-                        "السهم": ticker.contract.symbol,
-                        "السعر": ticker.last,
-                        "القيمة": val
+                        "السهم": symbol,
+                        "السعر": f"${t['p']:,.2f}",
+                        "الكمية": f"{t['s']:,}",
+                        "القيمة الكلية": f"${trade_value:,.0f} 🚨"
                     }
-                    if trade_data not in st.session_state.whale_trades:
-                        st.session_state.whale_trades.insert(0, trade_data)
-                        st.session_state.whale_trades = st.session_state.whale_trades[:10]
+                    # منع التكرار وإضافة الصيد الجديد في الأعلى
+                    if not st.session_state.whale_log or st.session_state.whale_log[0]['القيمة الكلية'] != new_entry['القيمة الكلية']:
+                        st.session_state.whale_log.insert(0, new_entry)
+                        st.session_state.whale_log = st.session_state.whale_log[:20]
+    except Exception as e:
+        pass
 
-    for c in contracts:
-        ib.reqMktData(c, '', False, False)
+# --- 4. واجهة التحكم ---
+st.sidebar.header("⚙️ إعدادات الرادار")
+whale_limit = st.sidebar.number_input("حد صفقة الحوت ($)", value=100000, step=50000)
+symbols_to_track = st.sidebar.text_input("الأسهم المراقبة", "TSLA,NVDA,AAPL,SPY").split(',')
+
+# --- 5. العرض المباشر ---
+st.subheader("📊 الصيد اللحظي (مراقبة فقط)")
+
+if st.sidebar.button("تشغيل الرادار 🚀"):
+    st.sidebar.success("الرادار يعمل الآن في الخفاء...")
     
-    ib.pendingTickersEvent += onTick
-
-    # --- عرض الجدول مع أزرار التنفيذ ---
-    st.subheader("📊 الصفقات المرصودة حالياً")
+    placeholder = st.empty()
     
-    if st.session_state.whale_trades:
-        for i, trade in enumerate(st.session_state.whale_trades):
-            cols = st.columns([1, 1, 1, 1, 2])
-            cols[0].write(trade['الوقت'])
-            cols[1].write(f"**{trade['السهم']}**")
-            cols[2].write(f"${trade['السعر']}")
-            cols[3].write(f"${trade['القيمة']:,.0f}")
-            
-            # زر النسخ لكل صفقة
-            if cols[4].button(f"نسخ صفقة {trade['السهم']} 🎯", key=f"btn_{i}"):
-                place_whale_order(trade['السهم'], copy_size)
-    else:
-        st.info("الرادار يعمل في الخفاء.. بانتظار الحيتان 🌊")
-
-    # تحديث تلقائي للواجهة
-    ib.sleep(0.5)
-    st.rerun()
+    while True:
+        for sym in symbols_to_track:
+            fetch_whale_trades(sym.strip().upper())
+        
+        with placeholder.container():
+            if st.session_state.whale_log:
+                df = pd.DataFrame(st.session_state.whale_log)
+                st.table(df) # عرض الصيد في جدول منظم
+            else:
+                st.info("🌊 المسح جارٍ.. بانتظار ظهور أول حوت في المحيط.")
+        
+        time.sleep(10) # تحديث كل 10 ثوانٍ لضمان استقرار السيرفر
