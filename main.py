@@ -5,66 +5,66 @@ import datetime
 import time
 
 # --- 1. إعدادات الواجهة ---
-st.set_page_config(page_title="رادار هادي لصيد الحيتان", layout="wide")
-st.title("🐳 رادار هادي: صيد صفقات الحيتان (رصد فقط)")
+st.set_page_config(page_title="رادار هادي - القناص الذكي", layout="wide")
+st.title("🎯 رادار هادي: صيد الحيتان (أسهم تحت 50$)")
+st.write(f"🔍 الرادار يراقب الآن الأسهم التي يمكنك شراؤها بميزانية 50 دولار.")
 
-# --- 2. إدارة البيانات (في الخفاء) ---
-# سنستخدم مفتاح تجريبي للبيانات (يمكنك استبداله بمفتاحك الخاص لاحقاً)
-POLYGON_API_KEY = "YOUR_FREE_API_KEY" 
+# --- 2. إعدادات البيانات والمفتاح الخاص بك ---
+API_KEY = "A8nb_XrU0KTykEls_e6tgpg9D6iZZVQt"
 
-if 'whale_log' not in st.session_state:
-    st.session_state.whale_log = []
+# قائمة الأسهم النشطة والرخيصة (اقتصادية)
+symbols = ["PLTR", "SOFI", "NIO", "F", "LCID", "CCL", "T", "PFE", "AAL"]
 
-# --- 3. وظيفة الرصد (Whale Detection Logic) ---
-def fetch_whale_trades(symbol):
-    """جلب الصفقات الضخمة من السوق الأمريكي"""
-    url = f"https://api.polygon.io/v3/trades/{symbol}?limit=10&apiKey={POLYGON_API_KEY}"
-    try:
-        response = requests.get(url)
-        if response.status_code == 200:
-            trades = response.json().get('results', [])
-            for t in trades:
-                # حساب قيمة الصفقة: السعر × الكمية
-                trade_value = t['p'] * t['s']
+if 'whale_history' not in st.session_state:
+    st.session_state.whale_history = []
+
+# --- 3. وظيفة الرصد المستمر ---
+def scan_market():
+    for symbol in symbols:
+        # جلب بيانات آخر صفقة للسهم
+        url = f"https://api.polygon.io/v2/last/trade/{symbol}?apiKey={API_KEY}"
+        try:
+            r = requests.get(url)
+            if r.status_code == 200:
+                data = r.json().get('results', {})
+                price = data.get('p', 0)  # السعر الحالي
+                size = data.get('s', 0)   # كمية الأسهم في الصفقة
+                value = price * size      # القيمة الإجمالية للصفقة
                 
-                # إذا كانت الصفقة أكبر من حد الحوت المحدد
-                if trade_value >= whale_limit:
-                    new_entry = {
+                # الفلتر: السعر تحت 50$ والقيمة الإجمالية للصفقة فوق 20,000$ (دخول حوت)
+                if 0 < price <= 50 and value >= 20000:
+                    trade = {
                         "الوقت": datetime.datetime.now().strftime("%H:%M:%S"),
                         "السهم": symbol,
-                        "السعر": f"${t['p']:,.2f}",
-                        "الكمية": f"{t['s']:,}",
-                        "القيمة الكلية": f"${trade_value:,.0f} 🚨"
+                        "سعر السهم": f"${price:.2f}",
+                        "قيمة صفقة الحوت": f"${value:,.0f} 🐳",
+                        "الحالة": "متاح للشراء ✅"
                     }
-                    # منع التكرار وإضافة الصيد الجديد في الأعلى
-                    if not st.session_state.whale_log or st.session_state.whale_log[0]['القيمة الكلية'] != new_entry['القيمة الكلية']:
-                        st.session_state.whale_log.insert(0, new_entry)
-                        st.session_state.whale_log = st.session_state.whale_log[:20]
-    except Exception as e:
-        pass
+                    
+                    # إضافة الصيد الجديد ومنع التكرار اللحظي
+                    if not st.session_state.whale_history or st.session_state.whale_history[0]['قيمة صفقة الحوت'] != trade['قيمة صفقة الحوت']:
+                        st.session_state.whale_history.insert(0, trade)
+                        # الاحتفاظ بآخر 15 صيداً فقط لتنظيم الشاشة
+                        st.session_state.whale_history = st.session_state.whale_history[:15]
+            
+            # تأخير لمدة 12 ثانية لتجنب تجاوز حد الـ 5 طلبات في الدقيقة (للنسخة المجانية)
+            time.sleep(12) 
+        except:
+            continue
 
-# --- 4. واجهة التحكم ---
-st.sidebar.header("⚙️ إعدادات الرادار")
-whale_limit = st.sidebar.number_input("حد صفقة الحوت ($)", value=100000, step=50000)
-symbols_to_track = st.sidebar.text_input("الأسهم المراقبة", "TSLA,NVDA,AAPL,SPY").split(',')
+# --- 4. عرض النتائج على الصفحة ---
+placeholder = st.empty()
 
-# --- 5. العرض المباشر ---
-st.subheader("📊 الصيد اللحظي (مراقبة فقط)")
-
-if st.sidebar.button("تشغيل الرادار 🚀"):
-    st.sidebar.success("الرادار يعمل الآن في الخفاء...")
+# بدء الحلقة اللانهائية للرصد المستمر
+while True:
+    scan_market()
+    with placeholder.container():
+        if st.session_state.whale_history:
+            # تحويل البيانات لجدول أنيق
+            df = pd.DataFrame(st.session_state.whale_history)
+            st.table(df)
+        else:
+            st.info("الرادار يمسح الأسهم الاقتصادية الآن... يرجى الانتظار لصيد أول حوت 🌊")
     
-    placeholder = st.empty()
-    
-    while True:
-        for sym in symbols_to_track:
-            fetch_whale_trades(sym.strip().upper())
-        
-        with placeholder.container():
-            if st.session_state.whale_log:
-                df = pd.DataFrame(st.session_state.whale_log)
-                st.table(df) # عرض الصيد في جدول منظم
-            else:
-                st.info("🌊 المسح جارٍ.. بانتظار ظهور أول حوت في المحيط.")
-        
-        time.sleep(10) # تحديث كل 10 ثوانٍ لضمان استقرار السيرفر
+    # تحديث واجهة Streamlit تلقائياً
+    st.rerun()
