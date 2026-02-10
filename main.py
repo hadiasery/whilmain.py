@@ -3,52 +3,67 @@ import yfinance as yf
 import pandas as pd
 import time
 
-# إعداد الصفحة
-st.set_page_config(page_title="رادار هادي - النسخة السريعة", layout="wide")
+# 1. إعداد الصفحة (بدون أي أزرار بدء)
+st.set_page_config(page_title="رادار هادي اللحظي", layout="wide")
+
+# 2. القائمة الشرعية فقط + الميزانية تحت 25$ (تم حذف NVDA, TSLA, AAPL, SOFI, LCID)
+final_watch_list = ['MARA', 'RIOT', 'PLTR', 'F', 'CLOV', 'NIO', 'AAL', 'GRWG', 'AMC']
 
 st.title("🏹 رادار هادي - نظام القنص الذاتي")
-st.success("✅ الرادار يعمل أوتوماتيكياً الآن ويراقب فقط الشركات الشرعية (تحت 25$)")
+st.write("---")
+st.success("✅ الرادار يعمل الآن بشكل آلي تماماً (بدون أزرار) ويراقب الشركات الشرعية فقط.")
 
-# القائمة الصافية والشرعية (تم حذف NVDA, TSLA, AAPL, SOFI, LCID)
-final_list = ['MARA', 'RIOT', 'PLTR', 'F', 'CLOV', 'NIO', 'AAL', 'GRWG', 'AMC']
-
-# حاوية الجدول لضمان التحديث في نفس المكان
+# حاوية الجدول
 placeholder = st.empty()
 
-def get_data():
+def start_scanning():
     results = []
-    for symbol in final_list:
+    for symbol in final_watch_list:
         try:
-            # استخدام جلب بيانات سريع جداً
             ticker = yf.Ticker(symbol)
-            data = ticker.fast_info
+            # جلب البيانات اللحظية
+            data = ticker.history(period='1d', interval='1m').tail(5)
+            if data.empty: continue
+
+            last_price = data.iloc[-1]['Close']
+            prev_price = data.iloc[-2]['Close']
+            current_vol = data.iloc[-1]['Volume']
+            avg_vol = data['Volume'].mean()
             
-            # حساب سعر تقديري للعقد (للميزانية)
-            price = data['last_price']
+            vol_strength = (current_vol / avg_vol) * 100
             
-            # إشارات وهمية ذكية للمحاكاة إذا كان السوق مغلقاً لضمان ظهور الجدول دائماً
+            # تحديد الاتجاه واللون
+            direction = "CALL 🟢" if last_price > prev_price else "PUT 🔴"
+            status = "👑 حوت ذهبي" if vol_strength > 150 else "⚪ عادي"
+            
             results.append({
                 "الشركة": symbol,
-                "السعر الآن": f"${round(price, 2)}",
-                "الحالة": "🔎 فحص السيولة",
-                "التنبيه": "انتظار ⏳",
-                "الميزانية": "✅ مناسبة (25$)"
+                "السعر الآن": f"${round(last_price, 2)}",
+                "الحالة": status,
+                "التنبيه": direction,
+                "قوة السيولة": f"{round(vol_strength)}%",
+                "الميزانية": "✅ متاح بـ 25$"
             })
         except:
             continue
     return pd.DataFrame(results)
 
-# التشغيل التلقائي المباشر
+# --- محرك التشغيل الأوتوماتيكي المباشر ---
 while True:
-    df = get_data()
+    df_results = start_scanning()
     with placeholder.container():
-        st.write(f"⏱️ **توقيت التحديث:** {time.strftime('%H:%M:%S')}")
-        if not df.empty:
-            # عرض الجدول فوراً
-            st.table(df)
+        st.write(f"⏱️ **تحديث مباشر:** {time.strftime('%H:%M:%S')}")
+        if not df_results.empty:
+            # تلوين الجدول بالكامل بالأخضر عند رصد حوت كما في صورتك
+            def highlight_whale(row):
+                if "حوت" in row['الحالة']:
+                    return ['background-color: #2ecc71; color: white'] * len(row)
+                return [''] * len(row)
+            
+            st.table(df_results.style.apply(highlight_whale, axis=1))
         else:
-            st.error("🔄 جاري محاولة الاتصال بخادم الأسعار...")
-    
-    # تحديث كل 10 ثوانٍ لضمان عدم حظر الـ IP
-    time.sleep(10)
+            st.warning("🔎 جاري جلب البيانات من السوق...")
+            
+    # تحديث كل 5 ثوانٍ تلقائياً
+    time.sleep(5)
     st.rerun()
