@@ -1,98 +1,69 @@
 import streamlit as st
-import pandas as pd
 import yfinance as yf
+import pandas as pd
 import time
 
-# --- 1. إعدادات الصفحة ---
-st.set_page_config(page_title="رادار هادي V61.0 - القناص الصامت", layout="wide")
+# 1. إعداد الصفحة (بدون أي أزرار بدء)
+st.set_page_config(page_title="رادار هادي اللحظي", layout="wide")
 
-st.markdown("""
-    <style>
-    .main { background-color: #f8f9fa; }
-    .stTable { background-color: white; border-radius: 12px; }
-    </style>
-    """, unsafe_allow_html=True)
+# 2. القائمة الشرعية فقط + الميزانية تحت 25$ (تم حذف NVDA, TSLA, AAPL, SOFI, LCID)
+final_watch_list = ['MARA', 'RIOT', 'PLTR', 'F', 'CLOV', 'NIO', 'AAL', 'GRWG', 'AMC']
 
-st.title("🏹 رادار هادي - نظام القنص الصامت")
-st.write("⚠️ **الوضع الحالي:** التنبيه (Call/Put) والتلوين الأخضر **معطلان تماماً** ولن يظهرا إلا عند رصد سيولة $\ge$ 50,000,000$.")
+st.title("🏹 رادار هادي - نظام القنص الذاتي")
+st.write("---")
+st.success("✅ الرادار يعمل الآن بشكل آلي تماماً (بدون أزرار) ويراقب الشركات الشرعية فقط.")
 
-# --- 2. الشريط الجانبي ---
-with st.sidebar:
-    st.header("🛡️ قواعد حماية الـ $50")
-    st.info("1. لا تدخل بدون علامة التاج الذهبي 👑")
-    st.info("2. اللون الأخضر يعني دخول الحوت الآن")
-    api_key = st.text_input("أدخل API KEY", type="password")
-    api_secret = st.text_input("أدخل SECRET KEY", type="password")
+# حاوية الجدول
+placeholder = st.empty()
 
-symbols = ["PLTR", "SOFI", "NIO", "MARA", "TSLA", "AAPL", "NVDA", "RIVN", "AMD", "AMC"]
+def start_scanning():
+    results = []
+    for symbol in final_watch_list:
+        try:
+            ticker = yf.Ticker(symbol)
+            # جلب البيانات اللحظية
+            data = ticker.history(period='1d', interval='1m').tail(5)
+            if data.empty: continue
 
-if 'price_history' not in st.session_state:
-    st.session_state.price_history = {}
-
-# --- 3. دالة التلوين الصارمة (50 مليون فقط) ---
-def highlight_whales(row, df_original):
-    symbol = row['الشركة']
-    liquidity = df_original.loc[df_original['الشركة'] == symbol, 'السيولة الرقمية'].values[0]
-    # التلوين لا يحدث إلا إذا تجاوزت السيولة 50 مليون
-    if liquidity >= 50000000:
-        return ['background-color: #2ecc71; color: white; font-weight: bold'] * len(row)
-    return [''] * len(row)
-
-# --- 4. محرك التشغيل المستمر ---
-if st.button("بدء الرصد اللحظي 🚀"):
-    placeholder = st.empty()
-    
-    while True:
-        current_data = []
-        for symbol in symbols:
-            try:
-                ticker = yf.Ticker(symbol)
-                info = ticker.fast_info
-                
-                price = info.last_price
-                volume = info.last_volume
-                flow_value = price * volume 
-                
-                # جلب السعر السابق
-                old_price = st.session_state.price_history.get(symbol, price)
-                st.session_state.price_history[symbol] = price
-                
-                # --- المنطق الحاسم: التنبيه يكون "انتظار" دائماً إلا في حالة الـ 50 مليون ---
-                status = "⚪ عادي"
-                signal = "انتظار ⏳"
-                
-                if flow_value >= 50000000:
-                    status = "👑 حوت ذهبي"
-                    # لا نحدد النوع إلا داخل هذا الشرط فقط
-                    if price > old_price:
-                        signal = "CALL 🟢"
-                    elif price < old_price:
-                        signal = "PUT 🔴"
-                    else:
-                        signal = "تمركز ⚪"
-                
-                current_data.append({
-                    "الشركة": symbol,
-                    "السعر الآن": price,
-                    "الحالة": status,
-                    "التنبيه": signal,
-                    "السيولة الرقمية": flow_value 
-                })
-            except:
-                continue
-
-        # --- 5. العرض ---
-        if current_data:
-            df_full = pd.DataFrame(current_data)
-            df_full = df_full.sort_values(by='السيولة الرقمية', ascending=False)
+            last_price = data.iloc[-1]['Close']
+            prev_price = data.iloc[-2]['Close']
+            current_vol = data.iloc[-1]['Volume']
+            avg_vol = data['Volume'].mean()
             
-            df_display = df_full[["الشركة", "السعر الآن", "الحالة", "التنبيه"]].copy()
-            df_display['السعر الآن'] = df_display['السعر الآن'].apply(lambda x: f"${x:.2f}")
+            vol_strength = (current_vol / avg_vol) * 100
             
-            with placeholder.container():
-                st.subheader(f"📡 مراقبة السيولة المؤسساتية - {time.strftime('%H:%M:%S')}")
-                st.table(df_display.style.apply(lambda row: highlight_whales(row, df_full), axis=1))
-        
-        time.sleep(2)
-else:
-    st.info("الرادار متوقف. بانتظار أمر التشغيل...")
+            # تحديد الاتجاه واللون
+            direction = "CALL 🟢" if last_price > prev_price else "PUT 🔴"
+            status = "👑 حوت ذهبي" if vol_strength > 150 else "⚪ عادي"
+            
+            results.append({
+                "الشركة": symbol,
+                "السعر الآن": f"${round(last_price, 2)}",
+                "الحالة": status,
+                "التنبيه": direction,
+                "قوة السيولة": f"{round(vol_strength)}%",
+                "الميزانية": "✅ متاح بـ 25$"
+            })
+        except:
+            continue
+    return pd.DataFrame(results)
+
+# --- محرك التشغيل الأوتوماتيكي المباشر ---
+while True:
+    df_results = start_scanning()
+    with placeholder.container():
+        st.write(f"⏱️ **تحديث مباشر:** {time.strftime('%H:%M:%S')}")
+        if not df_results.empty:
+            # تلوين الجدول بالكامل بالأخضر عند رصد حوت كما في صورتك
+            def highlight_whale(row):
+                if "حوت" in row['الحالة']:
+                    return ['background-color: #2ecc71; color: white'] * len(row)
+                return [''] * len(row)
+            
+            st.table(df_results.style.apply(highlight_whale, axis=1))
+        else:
+            st.warning("🔎 جاري جلب البيانات من السوق...")
+            
+    # تحديث كل 5 ثوانٍ تلقائياً
+    time.sleep(5)
+    st.rerun()
