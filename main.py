@@ -1,47 +1,35 @@
-import yfinance as yf
 import pandas as pd
+import requests
+import time
 
-def fast_scan_no_limits(ticker_list):
-    print("🚀 جاري المسح السريع.. سنمسح القيود لنرى الحيتان الآن:")
-    results = []
+def stealth_whale_hunt(ticker):
+    # محاكاة متصفح حقيقي 100%
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,ir/apng,*/*;q=0.8',
+    }
     
-    for ticker in ticker_list:
-        try:
-            stock = yf.Ticker(ticker)
-            # جلب أقرب تاريخ انتهاء (أكثر سيولة)
-            options = stock.options
-            if not options:
-                continue
-            
-            chain = stock.option_chain(options[0])
-            calls = chain.calls
-            
-            # فلتر "أقل قسوة" لإظهار النتائج: 
-            # نبحث عن أي عقد فيه حجم التداول (Volume) أكبر من 500 عقد 
-            # وهو ما يمثل حركة "غير طبيعية" للساعة الحالية
-            unusual = calls[calls['volume'] > 500].sort_values(by='volume', ascending=False)
-            
-            if not unusual.empty:
-                for index, row in unusual.head(3).iterrows():
-                    results.append({
-                        'Ticker': ticker,
-                        'Strike': row['strike'],
-                        'Volume': row['volume'],
-                        'OI': row['openInterest'],
-                        'Last Price': row['lastPrice']
-                    })
-                    print(f"✅ وجدنا حركة في {ticker} - سترايك {row['strike']} - حجم: {row['volume']}")
-        except Exception as e:
-            print(f"❌ {ticker}: لا توجد استجابة من المصدر.")
-            
-    return pd.DataFrame(results)
+    # رابط البيانات الخام (نطلب بيانات الأوبشن مباشرة)
+    url = f"https://query1.finance.yahoo.com/v7/finance/options/{ticker}"
+    
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        data = response.json()
+        
+        # استخراج عقود الـ Calls
+        calls = data['optionChain']['result'][0]['options'][0]['calls']
+        df = pd.DataFrame(calls)
+        
+        # ترتيب حسب الحجم (Volume) لرؤية أين يضع الحيتان أموالهم الآن
+        top_moves = df[['strike', 'lastPrice', 'volume', 'openInterest']].sort_values(by='volume', ascending=False)
+        
+        print(f"\n🎯 تم اختراق البيانات لسهم: {ticker}")
+        print(top_moves.head(5)) # إظهار أعلى 5 عقود نشاطاً
+        
+    except Exception as e:
+        print(f"❌ فشل التسلل لسهم {ticker}: المصدر يرفض الاستجابة.")
 
-# لنضع قائمة أكبر لضمان صيد شيء ما
-test_list = ["TSLA", "NVDA", "AMD", "AAPL", "MSFT", "META", "AMZN", "PLTR", "BABA", "MARA"]
-df = fast_scan_no_limits(test_list)
-
-if df.empty:
-    print("\n⚠️ لا تزال البيانات محجوبة.. ياهو ترفض إعطاء معلومات الأوبشن حالياً.")
-else:
-    print("\n🎯 تقرير الحيتان المبدئي:")
-    print(df)
+# جرب سهمين فقط للتأكد من نجاح "الاختراق"
+for t in ["TSLA", "NVDA"]:
+    stealth_whale_hunt(t)
+    time.sleep(2) # انتظار بسيط
