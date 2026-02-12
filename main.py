@@ -1,32 +1,42 @@
+import yfinance as yf
 import pandas as pd
-import requests
+import streamlit as st
 
-def barchart_whale_scanner():
-    # هذا الرابط يذهب مباشرة لجدول الخيارات غير الطبيعية
-    url = "https://www.barchart.com/options/unusual-daily-volume"
+def crazy_scanner():
+    st.write("🔎 جاري فحص الرادار... إذا لم تظهر نتائج، فالموقع يحجبنا.")
     
-    # هوية متصفح كاملة لتجنب الحظر
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9'
-    }
+    # قائمة أسهم قوية للبدء
+    tickers = ["TSLA", "NVDA", "AAPL", "AMD", "PLTR", "MARA"]
+    found_something = False
 
-    try:
-        # ملاحظة: برشارط يحتاج أحياناً لزيارة الصفحة الرئيسية أولاً لأخذ "كوكي"
-        session = requests.Session()
-        session.get("https://www.barchart.com", headers=headers)
-        
-        # الآن نطلب البيانات
-        response = session.get(url, headers=headers)
-        
-        # قراءة الجداول من الصفحة
-        tables = pd.read_html(response.text)
-        df = tables[0] # الجدول الأول عادة هو جدول الصفقات
-        
-        print("🎯 تم صيد الصفقات غير الطبيعية من Barchart:")
-        print(df[['Symbol', 'Price', 'Strike', 'Volume', 'Open Int']].head(10))
-        
-    except Exception as e:
-        print(f"⚠️ الموقع اكتشفنا أو الجدول تغير هيلكله.. نحتاج لتكتيك أعمق.")
+    for ticker in tickers:
+        try:
+            # محاولة جلب البيانات بأكثر من طريقة
+            tk = yf.Ticker(ticker)
+            opts = tk.options
+            
+            if not opts:
+                st.warning(f"⚠️ {ticker}: لم نجد عقود أوبشن حالياً.")
+                continue
+                
+            # جلب أول تاريخ انتهاء
+            chain = tk.option_chain(opts[0])
+            calls = chain.calls
+            
+            # فلتر الحيتان: حجم التداول > 1000 عقد (حركة نشطة جداً)
+            whales = calls[calls['volume'] > 1000].sort_values(by='volume', ascending=False)
+            
+            if not whales.empty:
+                found_something = True
+                st.success(f"✅ تم رصد حيتان في {ticker}")
+                st.table(whales[['strike', 'lastPrice', 'volume', 'openInterest']].head(5))
+                
+        except Exception as e:
+            st.error(f"❌ خطأ في {ticker}: {str(e)}")
 
-barchart_whale_scanner()
+    if not found_something:
+        st.info("ℹ️ الرادار يعمل ولكن لا توجد صفقات ضخمة (Volume > 1000) في هذه اللحظة.")
+
+# تشغيل الرادار
+if st.button('ابدأ استراق السمع الآن'):
+    crazy_scanner()
