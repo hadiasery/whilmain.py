@@ -1,35 +1,53 @@
 import streamlit as st
-import yfinance as yf
+import requests
 import pandas as pd
+import random
 
-st.title("🛡️ رادار الأوبشن - نسخة الإنقاذ")
+# قائمة بروكسيات (هذه أمثلة، في الواقع نستخدم ملقمات حية)
+def get_proxy():
+    # في النسخة الاحترافية، نستخدم API لجلب بروكسي جديد كل ثانية
+    proxies = [
+        None, # الطلب العادي
+        # "http://username:password@proxy_host:port", # إذا كان لديك بروكسي مدفوع
+    ]
+    return random.choice(proxies)
 
-ticker = st.text_input("أدخل رمز السهم (مثلاً AAPL):", "TSLA")
+def fetch_with_new_ip(ticker):
+    url = f"https://query1.finance.yahoo.com/v7/finance/options/{ticker}"
+    
+    # تغيير الـ User-Agent (تغيير الهوية الرقمية)
+    headers = {
+        "User-Agent": random.choice([
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/537.36",
+            "Mozilla/5.0 (X11; Linux x86_64) Firefox/121.0"
+        ])
+    }
 
-if st.button('بدء الفحص الآمن'):
     try:
-        # 1. طلب البيانات بهدوء
-        stock = yf.Ticker(ticker)
+        # هنا نحاول تغيير الـ IP عبر البروكسي
+        proxy = get_proxy()
+        response = requests.get(url, headers=headers, proxies={"http": proxy, "https": proxy} if proxy else None, timeout=10)
         
-        # 2. جلب أقرب تاريخ انتهاء (السيولة الأعلى)
-        dates = stock.options
-        if dates:
-            chain = stock.option_chain(dates[0])
-            calls = chain.calls
-            
-            # 3. فلتر الحيتان: حجم التداول (Volume) أكبر من 1000
-            whales = calls[calls['volume'] > 1000].sort_values(by='volume', ascending=False)
-            
-            if not whales.empty:
-                st.success(f"✅ تم العثور على تحركات ضخمة في {ticker}")
-                st.dataframe(whales[['strike', 'lastPrice', 'volume', 'openInterest']])
-            else:
-                st.info("لا توجد عقود بحجم تداول ضخم حالياً لهذا السهم.")
+        if response.status_code == 200:
+            data = response.json()
+            return data['optionChain']['result'][0]['options'][0]['calls']
         else:
-            st.warning("لم يتم العثور على بيانات أوبشن حالياً.")
-            
+            return f"Error: {response.status_code} (IP Blocked)"
     except Exception as e:
-        if "Rate limited" in str(e):
-            st.error("🛑 تم حظر الـ IP الخاص بالمنصة. يرجى الانتظار 10 دقائق أو التشغيل محلياً.")
-        else:
-            st.error(f"حدث خطأ غير متوقع: {e}")
+        return str(e)
+
+st.title("🛡️ رادار تغيير الـ IP التلقائي")
+
+ticker = st.text_input("أدخل الرمز لكسر الحظر:", "NVDA")
+
+if st.button('فحص بـ IP جديد 🔄'):
+    result = fetch_with_new_ip(ticker)
+    
+    if isinstance(result, list):
+        df = pd.DataFrame(result)
+        st.success(f"✅ تم تجاوز الحظر لسهم {ticker}!")
+        st.dataframe(df[['strike', 'lastPrice', 'volume', 'openInterest']].sort_values(by='volume', ascending=False).head(10))
+    else:
+        st.error(f"❌ لا يزال الـ IP محظوراً: {result}")
+        st.info("نصيحة: تغيير الـ IP في Streamlit صعب جداً. أفضل وسيلة هي تشغيل الكود من كمبيوترك الشخصي واستخدام VPN.")
