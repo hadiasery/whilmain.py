@@ -1,45 +1,47 @@
 import yfinance as yf
-import time
-import random
+import pandas as pd
 
-def find_silent_accumulation_stealth(ticker_list):
-    print("🕵️ جاري التسلل باستخدام تقنية 'المراوغة'...")
+def fast_scan_no_limits(ticker_list):
+    print("🚀 جاري المسح السريع.. سنمسح القيود لنرى الحيتان الآن:")
+    results = []
     
     for ticker in ticker_list:
         try:
-            # تمويه الطلب ليبدو كأنه من متصفح مختلف في كل مرة
             stock = yf.Ticker(ticker)
-            
-            # جلب البيانات
-            hist = stock.history(period="5d")
-            if hist.empty:
+            # جلب أقرب تاريخ انتهاء (أكثر سيولة)
+            options = stock.options
+            if not options:
                 continue
             
-            # حساب التذبذب (نبحث عن ضيق السعر)
-            volatility = (hist['High'].max() - hist['Low'].min()) / hist['Close'].iloc[-1]
+            chain = stock.option_chain(options[0])
+            calls = chain.calls
             
-            # فحص عقود الأوبشن
-            dates = stock.options
-            if not dates: continue
+            # فلتر "أقل قسوة" لإظهار النتائج: 
+            # نبحث عن أي عقد فيه حجم التداول (Volume) أكبر من 500 عقد 
+            # وهو ما يمثل حركة "غير طبيعية" للساعة الحالية
+            unusual = calls[calls['volume'] > 500].sort_values(by='volume', ascending=False)
             
-            chain = stock.option_chain(dates[0])
-            
-            # فلتر الحيتان: OI عالي جداً وحجم تداول منخفض (تراكم صامت)
-            # ركزنا هنا على العقود التي يفوق فيها OI الحجم بـ 10 أضعاف
-            stealth_moves = chain.calls[(chain.calls['openInterest'] > 1000) & 
-                                        (chain.calls['volume'] < chain.calls['openInterest'] * 0.1)]
-            
-            if not stealth_moves.empty and volatility < 0.05:
-                print(f"✅ كشفنا حركة صامتة في {ticker}!")
-                print(f"   السترايك: {stealth_moves.iloc[0]['strike']} | السيولة المفتوحة: {stealth_moves.iloc[0]['openInterest']}")
-
-            # "نفس عميق" لتضليل خوارزميات الحظر
-            time.sleep(random.randint(5, 10))
-            
+            if not unusual.empty:
+                for index, row in unusual.head(3).iterrows():
+                    results.append({
+                        'Ticker': ticker,
+                        'Strike': row['strike'],
+                        'Volume': row['volume'],
+                        'OI': row['openInterest'],
+                        'Last Price': row['lastPrice']
+                    })
+                    print(f"✅ وجدنا حركة في {ticker} - سترايك {row['strike']} - حجم: {row['volume']}")
         except Exception as e:
-            print(f"⚠️ ياهو تحاول الحظر عند {ticker}.. سآخذ استراحة.")
-            time.sleep(20)
+            print(f"❌ {ticker}: لا توجد استجابة من المصدر.")
+            
+    return pd.DataFrame(results)
 
-# قائمة صغيرة للبدء بها
-watch_list = ["PLTR", "TSLA", "NVDA", "BABA"]
-find_silent_accumulation_stealth(watch_list)
+# لنضع قائمة أكبر لضمان صيد شيء ما
+test_list = ["TSLA", "NVDA", "AMD", "AAPL", "MSFT", "META", "AMZN", "PLTR", "BABA", "MARA"]
+df = fast_scan_no_limits(test_list)
+
+if df.empty:
+    print("\n⚠️ لا تزال البيانات محجوبة.. ياهو ترفض إعطاء معلومات الأوبشن حالياً.")
+else:
+    print("\n🎯 تقرير الحيتان المبدئي:")
+    print(df)
