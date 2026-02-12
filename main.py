@@ -1,42 +1,44 @@
-import yfinance as yf
 import pandas as pd
+import requests
 import streamlit as st
 
-def crazy_scanner():
-    st.write("🔎 جاري فحص الرادار... إذا لم تظهر نتائج، فالموقع يحجبنا.")
+def nasdaq_whale_hacker(ticker):
+    # رابط مباشر يحاكي طلبات متصفح ناسداك الرسمي
+    url = f"https://api.nasdaq.com/api/quote/{ticker}/option-chain?assetclass=stocks&limit=20"
     
-    # قائمة أسهم قوية للبدء
-    tickers = ["TSLA", "NVDA", "AAPL", "AMD", "PLTR", "MARA"]
-    found_something = False
+    # هوية متصفح قوية جداً
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Origin": "https://www.nasdaq.com",
+        "Referer": "https://www.nasdaq.com/"
+    }
 
-    for ticker in tickers:
-        try:
-            # محاولة جلب البيانات بأكثر من طريقة
-            tk = yf.Ticker(ticker)
-            opts = tk.options
-            
-            if not opts:
-                st.warning(f"⚠️ {ticker}: لم نجد عقود أوبشن حالياً.")
-                continue
-                
-            # جلب أول تاريخ انتهاء
-            chain = tk.option_chain(opts[0])
-            calls = chain.calls
-            
-            # فلتر الحيتان: حجم التداول > 1000 عقد (حركة نشطة جداً)
-            whales = calls[calls['volume'] > 1000].sort_values(by='volume', ascending=False)
-            
-            if not whales.empty:
-                found_something = True
-                st.success(f"✅ تم رصد حيتان في {ticker}")
-                st.table(whales[['strike', 'lastPrice', 'volume', 'openInterest']].head(5))
-                
-        except Exception as e:
-            st.error(f"❌ خطأ في {ticker}: {str(e)}")
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        data = response.json()
+        
+        # استخراج مصفوفة العقود
+        rows = data['data']['table']['rows']
+        df = pd.DataFrame(rows)
+        
+        # تنظيف البيانات (تحويل النصوص إلى أرقام)
+        df['volume'] = pd.to_numeric(df['volume'].str.replace(',', ''), errors='coerce')
+        
+        # فلتر الحيتان: حجم تداول عالي
+        whales = df[df['volume'] > 100].sort_values(by='volume', ascending=False)
+        
+        return whales[['expiryDate', 'callPut', 'strike', 'lastPrice', 'volume']]
+    except Exception as e:
+        return None
 
-    if not found_something:
-        st.info("ℹ️ الرادار يعمل ولكن لا توجد صفقات ضخمة (Volume > 1000) في هذه اللحظة.")
+st.title("🕵️ رادار الحيتان (نسخة ناسداك غير القابلة للحظر)")
 
-# تشغيل الرادار
-if st.button('ابدأ استراق السمع الآن'):
-    crazy_scanner()
+if st.button('استرِق السمع الآن 🚀'):
+    for t in ["TSLA", "NVDA", "AAPL"]:
+        res = nasdaq_whale_hacker(t)
+        if res is not None and not res.empty:
+            st.success(f"✅ تم صيد بيانات {t} مباشرة من البورصة!")
+            st.table(res.head(5))
+        else:
+            st.error(f"❌ {t}: البورصة لم تستجب، قد يكون السوق مغلقاً أو الرابط تغير.")
