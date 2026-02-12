@@ -2,52 +2,69 @@ import streamlit as st
 import requests
 import pandas as pd
 import random
+from bs4 import BeautifulSoup
 
-# قائمة بروكسيات (هذه أمثلة، في الواقع نستخدم ملقمات حية)
-def get_proxy():
-    # في النسخة الاحترافية، نستخدم API لجلب بروكسي جديد كل ثانية
-    proxies = [
-        None, # الطلب العادي
-        # "http://username:password@proxy_host:port", # إذا كان لديك بروكسي مدفوع
-    ]
-    return random.choice(proxies)
+# دالة لجلب قائمة بروكسيات حية لتغيير الـ IP
+def get_free_proxies():
+    url = 'https://free-proxy-list.net/'
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        proxies = []
+        for row in soup.find('table', {'class': 'table'}).find_all('tr')[1:]:
+            tds = row.find_all('td')
+            try:
+                if tds[4].text == 'elite proxy' or tds[4].text == 'anonymous':
+                    ip = tds[0].text
+                    port = tds[1].text
+                    proxies.append(f"http://{ip}:{port}")
+            except:
+                continue
+        return proxies
+    except:
+        return []
 
-def fetch_with_new_ip(ticker):
+def fetch_data_with_proxy(ticker, proxy_list):
     url = f"https://query1.finance.yahoo.com/v7/finance/options/{ticker}"
     
-    # تغيير الـ User-Agent (تغيير الهوية الرقمية)
+    # اختيار بروكسي عشوائي لتغيير الـ IP
+    proxy = random.choice(proxy_list) if proxy_list else None
+    proxies = {"http": proxy, "https": proxy} if proxy else None
+    
     headers = {
-        "User-Agent": random.choice([
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/537.36",
-            "Mozilla/5.0 (X11; Linux x86_64) Firefox/121.0"
-        ])
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
     }
 
     try:
-        # هنا نحاول تغيير الـ IP عبر البروكسي
-        proxy = get_proxy()
-        response = requests.get(url, headers=headers, proxies={"http": proxy, "https": proxy} if proxy else None, timeout=10)
-        
+        response = requests.get(url, headers=headers, proxies=proxies, timeout=5)
         if response.status_code == 200:
             data = response.json()
-            return data['optionChain']['result'][0]['options'][0]['calls']
+            return data['optionChain']['result'][0]['options'][0]['calls'], proxy
         else:
-            return f"Error: {response.status_code} (IP Blocked)"
-    except Exception as e:
-        return str(e)
+            return f"Blocked (Status: {response.status_code})", proxy
+    except:
+        return "Connection Failed", proxy
 
-st.title("🛡️ رادار تغيير الـ IP التلقائي")
+st.title("🛡️ رادار الحيتان - نظام تغيير الـ IP")
 
-ticker = st.text_input("أدخل الرمز لكسر الحظر:", "NVDA")
+if 'proxies' not in st.session_state:
+    st.session_state.proxies = get_free_proxies()
 
-if st.button('فحص بـ IP جديد 🔄'):
-    result = fetch_with_new_ip(ticker)
-    
-    if isinstance(result, list):
-        df = pd.DataFrame(result)
-        st.success(f"✅ تم تجاوز الحظر لسهم {ticker}!")
-        st.dataframe(df[['strike', 'lastPrice', 'volume', 'openInterest']].sort_values(by='volume', ascending=False).head(10))
-    else:
-        st.error(f"❌ لا يزال الـ IP محظوراً: {result}")
-        st.info("نصيحة: تغيير الـ IP في Streamlit صعب جداً. أفضل وسيلة هي تشغيل الكود من كمبيوترك الشخصي واستخدام VPN.")
+st.write(f"🌐 لدينا حالياً {len(st.session_state.proxies)} عنوان IP جاهز للاستخدام.")
+
+ticker = st.text_input("أدخل الرمز (مثلاً NVDA):", "NVDA")
+
+if st.button('تغيير الـ IP والفحص الآن 🔄'):
+    with st.spinner('جاري تبديل الـ IP والتسلل...'):
+        result, used_ip = fetch_data_with_proxy(ticker, st.session_state.proxies)
+        
+        if isinstance(result, list):
+            st.success(f"✅ نجح الاختراق باستخدام IP: {used_ip}")
+            df = pd.DataFrame(result)
+            st.dataframe(df[['strike', 'lastPrice', 'volume', 'openInterest']].sort_values(by='volume', ascending=False).head(10))
+        else:
+            st.error(f"❌ فشل الـ IP ({used_ip}): {result}")
+            if st.button('تحديث قائمة الـ IPs'):
+                st.session_state.proxies = get_free_proxies()
+                st.rerun()
