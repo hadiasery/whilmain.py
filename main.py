@@ -1,36 +1,57 @@
-import streamlit as st
+import yfinance as yf
 import pandas as pd
-import requests
-from bs4 import BeautifulSoup
+import time
+import random
+from colorama import Fore, Style, init
 
-def get_google_finance_data(ticker):
-    # نستخدم جوجل كمصدر وسيط لأنه لا يُحظر
-    url = f"https://www.google.com/search?q=options+chain+{ticker}"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
+# تهيئة الألوان لتسهيل القراءة
+init(autoreset=True)
+
+def hunt_whales(tickers):
+    print(Fore.CYAN + "🚀 بدء رادار الحيتان المنزلي... (آمن 100%)")
+    print(Fore.YELLOW + "------------------------------------------")
     
-    try:
-        response = requests.get(url, headers=headers)
-        # هنا نقوم ببرمجة منطق لسحب البيانات من "بطاقات" جوجل المالية
-        # ملاحظة: جوجل يعطي لمحة سريعة، لكنها كافية لجس نبض الحيتان
-        return "تم الاتصال بنجاح عبر بوابة جوجل"
-    except:
-        return None
-
-# --- الرادار الحقيقي (نظام التنبيهات) ---
-st.title("🛡️ رادار الحيتان المصفح (ضد الحظر)")
-
-tickers = st.text_input("أدخل الأسهم (مثلاً: TSLA, NVDA):", "TSLA, NVDA")
-
-if st.button('بدء المسح الآمن 🚀'):
-    ticker_list = [t.strip() for t in tickers.split(",")]
-    
-    for t in ticker_list:
-        with st.expander(f"تحليل سهم {t}"):
-            # هنا سنضع الكود الذي يسحب من مصدر "مفتوح" تماماً 
-            # سأقوم الآن بكتابة دالة تجلب البيانات من Finviz لأنه الأقل حماية
-            st.write(f"🕵️ جاري مراقبة {t} عبر بوابة مشفرة...")
+    for ticker in tickers:
+        try:
+            print(f"🔎 فحص {ticker}...")
+            stock = yf.Ticker(ticker)
             
-            # محاكاة لبيانات حقيقية ستظهر لك فور تشغيل الكود
-            st.info("نصيحة ذهبية: السوق يغلي الآن، لا تدخل 'كول' إذا رأيت الـ IV مرتفعاً جداً!")
+            # جلب السعر الحالي
+            price = stock.fast_info['lastPrice']
+            
+            # جلب تواريخ الانتهاء
+            options_dates = stock.options
+            if not options_dates:
+                continue
+            
+            # فحص أول تاريخ انتهاء (الأكثر نشاطاً)
+            chain = stock.option_chain(options_dates[0])
+            calls = chain.calls
+            
+            # فلتر "الحوت الصامت": حجم تداول ضخم مقارنة بالعقود المفتوحة
+            # نركز على العقود التي يتجاوز حجمها 1500 عقد الآن
+            big_moves = calls[calls['volume'] > 1500].sort_values(by='volume', ascending=False)
+            
+            if not big_moves.empty:
+                print(Fore.GREEN + f"✅ صيد ثمين في {ticker} (السعر: {price:.2f}$):")
+                for _, row in big_moves.head(3).iterrows():
+                    print(f"   🔹 سترايك: {row['strike']} | الحجم: {row['volume']} | السيولة (OI): {row['openInterest']}")
+            else:
+                print(Fore.WHITE + f"   - لا توجد حركة غير طبيعية حالياً في {ticker}")
+
+            # 🛑 أهم خطوة لتجنب الحظر: "التنفس الصناعي"
+            # ننتظر وقتاً عشوائياً بين الأسهم لكي لا يشك الموقع
+            time.sleep(random.uniform(5, 10))
+            
+        except Exception as e:
+            print(Fore.RED + f"❌ تعذر جلب {ticker}: قد يكون هناك ضغط على الشبكة.")
+            time.sleep(30) # انتظر دقيقة إذا حدث خطأ
+
+# قائمة الأسهم التي تهمك
+my_list = ["TSLA", "NVDA", "AAPL", "AMD", "PLTR", "MARA"]
+
+# تشغيل الحلقة اللانهائية للمراقبة
+while True:
+    hunt_whales(my_list)
+    print(Fore.BLUE + "\n☕ استراحة لمدة دقيقتين قبل المسح القادم...")
+    time.sleep(120)
