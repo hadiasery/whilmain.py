@@ -1,44 +1,39 @@
-import pandas as pd
-import requests
 import streamlit as st
+import cloudscraper
+import pandas as pd
+import io
 
-def nasdaq_whale_hacker(ticker):
-    # رابط مباشر يحاكي طلبات متصفح ناسداك الرسمي
-    url = f"https://api.nasdaq.com/api/quote/{ticker}/option-chain?assetclass=stocks&limit=20"
+def bypass_and_scrip():
+    # استخدام scraper متطور يتجاوز Cloudflare والحظر
+    scraper = cloudscraper.create_scraper() 
     
-    # هوية متصفح قوية جداً
+    # سنحاول سحب بيانات الأوبشن النشطة من مصدر بديل وسريع (مثل Yahoo عبر رابط مختلف)
+    url = "https://query1.finance.yahoo.com/v7/finance/options/TSLA" # تجربة على تسلا
+    
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Origin": "https://www.nasdaq.com",
-        "Referer": "https://www.nasdaq.com/"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
     }
 
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-        data = response.json()
-        
-        # استخراج مصفوفة العقود
-        rows = data['data']['table']['rows']
-        df = pd.DataFrame(rows)
-        
-        # تنظيف البيانات (تحويل النصوص إلى أرقام)
-        df['volume'] = pd.to_numeric(df['volume'].str.replace(',', ''), errors='coerce')
-        
-        # فلتر الحيتان: حجم تداول عالي
-        whales = df[df['volume'] > 100].sort_values(by='volume', ascending=False)
-        
-        return whales[['expiryDate', 'callPut', 'strike', 'lastPrice', 'volume']]
-    except Exception as e:
-        return None
-
-st.title("🕵️ رادار الحيتان (نسخة ناسداك غير القابلة للحظر)")
-
-if st.button('استرِق السمع الآن 🚀'):
-    for t in ["TSLA", "NVDA", "AAPL"]:
-        res = nasdaq_whale_hacker(t)
-        if res is not None and not res.empty:
-            st.success(f"✅ تم صيد بيانات {t} مباشرة من البورصة!")
-            st.table(res.head(5))
+        response = scraper.get(url, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            calls = data['optionChain']['result'][0]['options'][0]['calls']
+            df = pd.DataFrame(calls)
+            return df
         else:
-            st.error(f"❌ {t}: البورصة لم تستجب، قد يكون السوق مغلقاً أو الرابط تغير.")
+            return f"Error Code: {response.status_code}"
+    except Exception as e:
+        return str(e)
+
+st.title("🕵️ رادار الحيتان - كاسر الحظر")
+
+if st.button('اقتناص الفرص الآن ⚡'):
+    res = bypass_and_scrip()
+    if isinstance(res, pd.DataFrame):
+        st.success("✅ نجح الاختراق! إليك عقود تسلا النشطة الآن:")
+        # ترتيب حسب الحجم لرؤية الحيتان
+        st.dataframe(res[['strike', 'lastPrice', 'volume', 'openInterest']].sort_values(by='volume', ascending=False).head(10))
+    else:
+        st.error(f"⚠️ لا يزال الجدار قوياً: {res}")
+        st.info("💡 الحل النهائي: ياهو حظرت Streamlit تماماً. سأعطيك كوداً يعمل بنظام 'Google Finance' البديل.")
